@@ -1,0 +1,231 @@
+{
+  "version": "1.0.0",
+  "exercises": {
+    "pushup": {
+      "exercise_type": "pushup",
+      "display_name": "Push-up",
+      "description": "A bodyweight exercise performed in a prone position by raising and lowering the body using the arms",
+      "recognition_pattern": {
+        "body_orientation": "horizontal",
+        "torso_angle_min": 0,
+        "torso_angle_max": 20,
+        "primary_joint": "elbow",
+        "oscillation_required": true,
+        "min_oscillation_range": 70,
+        "stationary_feet": true
+      },
+      "angle_thresholds": {
+        "up_min": 160,
+        "up_max": 180,
+        "down_min": 70,
+        "down_max": 90,
+        "hysteresis": 10
+      },
+      "is_duration_based": false,
+      "min_rep_duration_seconds": 0.5,
+      "form_rules": [
+        {
+          "rule_id": "pushup_hip_sag",
+          "description": "Hip sagging below shoulder line",
+          "joint_angles": ["hip"],
+          "threshold": 10,
+          "severity_multiplier": 1.0,
+          "suggestion": "Engage your core, keep hips in line with shoulders"
+        },
+        {
+          "rule_id": "pushup_hip_pike",
+          "description": "Hip raised above shoulder line",
+          "joint_angles": ["hip"],
+          "threshold": 10,
+          "severity_multiplier": 1.0,
+          "suggestion": "Lower your hips to maintain a straight line"
+        },
+        {
+          "rule_id": "pushup_elbow_flare",
+          "description": "Elbows flaring beyond 45 degrees from torso",
+          "joint_angles": ["elbow"],
+          "threshold": 45,
+          "severity_multiplier": 0.8,
+          "suggestion": "Tuck elbows closer to body, aim for 30-45 degree angle"
+        },
+        {
+          "rule_id": "pushup_partial_range",
+          "description": "Not reaching full depth",
+          "joint_angles": ["elbow"],
+          "threshold": 100,
+          "severity_multiplier": 1.2,
+          "suggestion": "Go deeper, aim for 90 degree elbow bend at bottom"
+        },
+        {
+          "rule_id": "pushup_head_drop",
+          "description": "Neck angle deviation",
+          "joint_angles": ["neck"],
+          "threshold": 30,
+          "severity_multiplier": 0.6,
+          "suggestion": "Keep neck neutral, look slightly forward"
+        }
+      ],
+      "camera_distance_meters": 2.5,
+      "camera_height": "waist",
+      "camera_angle": "side"
+    },
+    "squat": {
+      "exercise_type": "squat",
+      "display_name": "Squat",
+      "description": "A lower body exercise performed by bending the knees and hips while keeping the torso upright",
+      "recognition_pattern": {
+        "body_orientation": "vertical",
+        "torso_angle_min": 70,
+        "torso_angle_max": 90,
+        "primary_joint": "knee",
+        "oscillation_required": true,
+        "min_oscillation_range": 70,
+        "stationary_feet": false
+      },
+      "angle_thresholds": {
+        "up_min": 160,
+        "up_max": 180,
+        "down_min": 70,
+        "down_max": 90,
+        "hysteresis": 10
+      },
+      "is_duration_based": false,
+      "min_rep_duration_seconds": 0.5,
+      "form_rules": [
+        {
+          "rule_id": "squat_knee_cave",
+          "description": "Knees caving inward past toes",
+          "joint_angles": ["knee"],
+          "threshold": 5,
+          "severity_multiplier": 1.2,
+          "suggestion": "Push knees outward, track over toes"
+        },
+        {
+          "rule_id": "squat_shallow_depth",
+          "description": "Not reaching parallel depth",
+          "joint_angles": ["knee"],
+          "threshold": 100,
+          "severity_multiplier": 1.0,
+          "suggestion": "Go deeper, aim for parallel or below"
+        },
+        {
+          "rule_id": "squat_forward_lean",
+          "description": "Excessive forward torso lean",
+          "joint_angles": ["torso"],
+          "threshold": 60,
+          "severity_multiplier": 0.9,
+          "suggestion": "Keep chest up, don't lean too far forward"
+        },
+        {
+          "rule_id": "squat_heel_lift",
+          "description": "Heels lifting off ground",
+          "joint_angles": ["ankle"],
+          "threshold": 15,
+          "severity_multiplier": 1.1,
+          "suggestion": "Keep heels planted on ground"
+        },
+        {
+          "rule_id": "squat_knee_over_toe",
+          "description": "Knees shooting too far forward",
+          "joint_angles": ["knee"],
+          "threshold": 5,
+          "severity_multiplier": 0.8,
+          "suggestion": "Sit back more, don't let knees shoot forward"
+        }
+      ],
+      "camera_distance_meters": 2.5,
+      "camera_height": "waist",
+      "camera_angle": "side"
+    },
+    "plank": {
+      "exercise_type": "plank",
+      "display_name": "Plank",
+      "description": "An isometric core exercise performed by holding a push-up position with forearms on the ground",
+      "recognition_pattern": {
+        "body_orientation": "horizontal",
+        "torso_angle_min": 0,
+        "torso_angle_max": 20,
+        "primary_joint": "hip",
+        "oscillation_required": false,
+        "min_oscillation_range": 0,
+        "stationary_feet": true
+      },
+      "angle_thresholds": null,
+      "is_duration_based": true,
+      "min_rep_duration_seconds": 1.0,
+      "form_rules": [
+        {
+          "rule_id": "plank_hip_sag",
+          "description": "Hip sagging below shoulder line",
+          "joint_angles": ["hip"],
+          "threshold": 5,
+          "severity_multiplier": 1.2,
+          "suggestion": "Engage core, lift hips to straight line"
+        },
+        {
+          "rule_id": "plank_hip_pike",
+          "description": "Hip raised above shoulder line",
+          "joint_angles": ["hip"],
+          "threshold": 5,
+          "severity_multiplier": 1.2,
+          "suggestion": "Lower hips to straight line"
+        },
+        {
+          "rule_id": "plank_shoulder_collapse",
+          "description": "Shoulders dropping or collapsing",
+          "joint_angles": ["shoulder"],
+          "threshold": 10,
+          "severity_multiplier": 1.0,
+          "suggestion": "Push through shoulders, stay strong"
+        }
+      ],
+      "camera_distance_meters": 2.5,
+      "camera_height": "waist",
+      "camera_angle": "side"
+    },
+    "jumping_jack": {
+      "exercise_type": "jumping_jack",
+      "display_name": "Jumping Jack",
+      "description": "A full-body exercise performed by jumping with legs spread wide and arms overhead, then returning to standing",
+      "recognition_pattern": {
+        "body_orientation": "vertical",
+        "torso_angle_min": 70,
+        "torso_angle_max": 90,
+        "primary_joint": "shoulder",
+        "oscillation_required": true,
+        "min_oscillation_range": 130,
+        "stationary_feet": false
+      },
+      "angle_thresholds": {
+        "up_min": 160,
+        "up_max": 180,
+        "down_min": 0,
+        "down_max": 30,
+        "hysteresis": 10
+      },
+      "is_duration_based": false,
+      "min_rep_duration_seconds": 0.3,
+      "form_rules": [
+        {
+          "rule_id": "jumping_jack_incomplete_arms",
+          "description": "Arms not reaching overhead",
+          "joint_angles": ["shoulder"],
+          "threshold": 150,
+          "severity_multiplier": 1.0,
+          "suggestion": "Raise arms fully overhead"
+        },
+        {
+          "rule_id": "jumping_jack_incomplete_legs",
+          "description": "Legs not spreading wide enough",
+          "joint_angles": ["hip"],
+          "threshold": 30,
+          "severity_multiplier": 1.0,
+          "suggestion": "Jump wider, spread legs more"
+        }
+      ],
+      "camera_distance_meters": 3.0,
+      "camera_height": "waist",
+      "camera_angle": "front"
+    }
+  }
+}
