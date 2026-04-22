@@ -5,14 +5,9 @@ from typing import List, Optional
 from uuid import UUID
 
 from sqlalchemy import DECIMAL, String, TIMESTAMP, Text, text, ForeignKey, JSON, func
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column
 import uuid
-
-
-class Base(DeclarativeBase):
-    """Base class for all database models"""
-
-    pass
+from app.models.base import Base
 
 
 class User(Base):

@@ -6,7 +6,9 @@
  * - Type-safe message handling
  */
 
-import { PoseKeypoint } from './pose';
+import { PoseKeypoint } from "./pose";
+
+
 
 export enum MessageType {
   // Client -> Server messages

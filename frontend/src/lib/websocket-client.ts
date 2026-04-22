@@ -192,6 +192,7 @@ export class WebSocketClient {
     };
 
     this.ws.onmessage = (event) => {
+      console.log("BACKEND SAYS:", event.data);
       try {
         const message: ServerMessage = JSON.parse(event.data);
         this.handleServerMessage(message);

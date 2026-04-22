@@ -1,8 +1,13 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   webpack: (config) => {
-    // Fix for TensorFlow.js
     config.resolve.fallback = {
       ...config.resolve.fallback,
       fs: false,

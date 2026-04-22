@@ -2,13 +2,14 @@
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from typing import Optional
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
 
     # Database
-    DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/ai_gym_coach"
-    DATABASE_TEST_URL: str = "postgresql://postgres:postgres@localhost:5432/ai_gym_coach_test"
+    DATABASE_URL: str = "postgresql://postgres:ombur@localhost:5432/ai_gym_coach"
+    DATABASE_TEST_URL: str = "postgresql://postgres:ombur@localhost:5432/ai_gym_coach_test"
 
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"

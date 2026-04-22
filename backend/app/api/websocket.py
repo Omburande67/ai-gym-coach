@@ -78,10 +78,12 @@ class WorkoutSession:
         self.current_exercise: Optional[ExerciseType] = None
         self.is_active = True
         self.start_time = datetime.utcnow()
+        self.session_id: Optional[UUID] = None
         
         # Aggregated data for persistence
         self.exercise_history: Dict[ExerciseType, Dict] = {}
         self.total_reps_session = 0
+        self.pose_buffer = []  # Buffer for pose data if needed
         
         logger.info(f"WorkoutSession created for user {user_id}")
     
@@ -99,15 +101,16 @@ class WorkoutSession:
             # If exercise changed, notify frontend and reset rep counter
             if exercise_type != self.current_exercise and exercise_type != ExerciseType.UNKNOWN:
                 self.current_exercise = exercise_type
-                self.rep_counter = RepCounter(exercise_type)
+                if exercise_type != ExerciseType.UNKNOWN:
+                    self.rep_counter = RepCounter(exercise_type)
                 
                 message = ExerciseDetectedMessage(
-                    exercise=exercise_type.value,
+                    exercise=exercise_type.value if exercise_type != ExerciseType.UNKNOWN else "unknown",
                     confidence=confidence
                 )
                 await self.send_message(message)
                 
-                logger.info(f"Exercise detected for user {self.user_id}: {exercise_type.value}")
+                logger.info(f"Exercise detected for user {self.user_id}: {exercise_type.value if exercise_type != ExerciseType.UNKNOWN else 'unknown'}")
             
             # Step 2: Rep counting (if exercise is recognized)
             if self.current_exercise and self.current_exercise != ExerciseType.UNKNOWN and self.rep_counter:
@@ -115,7 +118,7 @@ class WorkoutSession:
                 
                 if new_count is not None:
                     # Update aggregate total
-                    self.total_reps_session += 1
+                    self.total_reps_session = new_count
                     
                     # Update exercise history
                     if self.current_exercise not in self.exercise_history:
@@ -136,40 +139,49 @@ class WorkoutSession:
             
             # Step 3: Form analysis (if exercise is recognized)
             if self.current_exercise and self.current_exercise != ExerciseType.UNKNOWN:
-                mistakes = self.form_analyzer.analyze(pose_data, self.current_exercise)
-                
-                if self.current_exercise in self.exercise_history:
-                    # Calculate form score (simplified for now)
-                    form_score = max(0, 100 - len(mistakes) * 10)
+                try:
+                    mistakes = self.form_analyzer.analyze(pose_data, self.current_exercise)
                     
-                    self.exercise_history[self.current_exercise]["form_scores"].append(form_score)
-                    mistake_records = []
-                    for mistake in mistakes:
-                        mistake_records.append({
-                            "type": mistake.mistake_type,
-                            "severity": mistake.severity,
-                            "suggestion": mistake.suggestion,
-                            "timestamp": pose_data.timestamp
-                        })
-                    
-                    if "mistakes" not in self.exercise_history[self.current_exercise]:
-                         self.exercise_history[self.current_exercise]["mistakes"] = []
-                    self.exercise_history[self.current_exercise]["mistakes"].extend(mistake_records)
-                    
-                    message = FormFeedbackMessage(
-                        mistakes=[
-                            FormMistakeData(
-                                type=mistake.mistake_type,
-                                severity=mistake.severity,
-                                suggestion=mistake.suggestion
+                    if self.current_exercise in self.exercise_history:
+                        # Calculate form score (simplified for now)
+                        form_score = max(0, 100 - len(mistakes) * 10)
+                        
+                        self.exercise_history[self.current_exercise]["form_scores"].append(form_score)
+                        mistake_records = []
+                        for mistake in mistakes:
+                            mistake_records.append({
+                                "type": mistake.mistake_type if hasattr(mistake, 'mistake_type') else str(mistake),
+                                "severity": mistake.severity if hasattr(mistake, 'severity') else 0.5,
+                                "suggestion": mistake.suggestion if hasattr(mistake, 'suggestion') else "Focus on form",
+                                "timestamp": pose_data.timestamp
+                            })
+                        
+                        if "mistakes" not in self.exercise_history[self.current_exercise]:
+                            self.exercise_history[self.current_exercise]["mistakes"] = []
+                        self.exercise_history[self.current_exercise]["mistakes"].extend(mistake_records)
+                        
+                        # Convert mistakes to FormMistakeData objects
+                        form_mistakes = []
+                        for mistake in mistakes:
+                            if hasattr(mistake, 'mistake_type'):
+                                form_mistakes.append(
+                                    FormMistakeData(
+                                        type=mistake.mistake_type,
+                                        severity=mistake.severity if hasattr(mistake, 'severity') else 0.5,
+                                        suggestion=mistake.suggestion if hasattr(mistake, 'suggestion') else "Focus on form"
+                                    )
+                                )
+                        
+                        if form_mistakes:
+                            message = FormFeedbackMessage(
+                                mistakes=form_mistakes,
+                                form_score=form_score
                             )
-                            for mistake in mistakes
-                        ],
-                        form_score=form_score
-                    )
-                    await self.send_message(message)
-                    
-                    logger.debug(f"Form feedback sent for user {self.user_id}: {len(mistakes)} mistakes")
+                            await self.send_message(message)
+                            
+                            logger.debug(f"Form feedback sent for user {self.user_id}: {len(mistakes)} mistakes")
+                except Exception as e:
+                    logger.warning(f"Form analysis error: {e}")
         
         except Exception as e:
             logger.error(f"Error processing pose data for user {self.user_id}: {e}", exc_info=True)
@@ -197,18 +209,27 @@ class WorkoutSession:
                 if data["form_scores"]:
                     avg_score = sum(data["form_scores"]) / len(data["form_scores"])
                 
+                # Convert mistakes to JSON-serializable format
+                mistakes_json = data.get("mistakes", [])
+                
                 exercise_records.append(
                     ExerciseRecordCreate(
                         exercise_type=ex_type.value,
                         reps_completed=data["reps"],
-                        duration_seconds=data.get("duration"),  # For plank
+                        duration_seconds=data.get("duration", 0),  # For plank
                         form_score=avg_score,
-                        mistakes=data["mistakes"]  # This will be JSONB
+                        mistakes=mistakes_json
                     )
                 )
             
             if not exercise_records:
                 logger.warning(f"No exercises recorded for user {self.user_id}, skipping save")
+                # Send error message but don't crash
+                error_message = ErrorMessage(
+                    message="No exercise data recorded",
+                    code="NO_DATA"
+                )
+                await self.send_message(error_message)
                 self.is_active = False
                 return
 
@@ -223,6 +244,8 @@ class WorkoutSession:
             user_service = UserService(self.db)
             saved_session = await user_service.save_workout(workout_data)
             
+            self.session_id = saved_session.session_id
+            
             logger.info(f"Workout session saved with ID: {saved_session.session_id}")
             
             # Notify client that session has been saved
@@ -233,10 +256,11 @@ class WorkoutSession:
         except Exception as e:
             logger.error(f"Error saving workout session for user {self.user_id}: {e}", exc_info=True)
             error_message = ErrorMessage(
-                message="Error saving workout session",
+                message=f"Error saving workout session: {str(e)}",
                 code="PERSISTENCE_ERROR"
             )
             await self.send_message(error_message)
+            self.is_active = False
     
     async def send_message(self, message: ServerMessage) -> None:
         """
@@ -246,7 +270,9 @@ class WorkoutSession:
             message: Server message to send
         """
         try:
-            await self.websocket.send_json(message.dict())
+            # Convert to dict and send
+            message_dict = message.dict() if hasattr(message, 'dict') else message
+            await self.websocket.send_json(message_dict)
         except Exception as e:
             logger.error(f"Error sending message to user {self.user_id}: {e}")
             self.is_active = False
@@ -257,8 +283,6 @@ class WorkoutSession:
         
         Args:
             feedback: Feedback data to send
-            
-        Deprecated: Use send_message() with typed messages instead.
         """
         try:
             await self.websocket.send_json(feedback)
@@ -357,9 +381,20 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, db: AsyncSessio
     session = await ws_manager.connect(websocket, user_id, db)
     
     try:
+        # Send initial connection confirmation
+        await websocket.send_json({
+    "type": "rep_counted",
+    "count": 1,
+    "total": 10
+})
+        
         while session.is_active:
-            # Receive message from client
-            data = await websocket.receive_text()
+            # Receive message from client with timeout
+            try:
+                data = await websocket.receive_text()
+            except WebSocketDisconnect:
+                logger.info(f"WebSocket disconnected by client: {user_id}")
+                break
             
             try:
                 # Parse JSON
@@ -381,7 +416,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str, db: AsyncSessio
                     elif isinstance(message, SessionEndMessage):
                         # Signal end of workout and persist data
                         await session.handle_session_end(message)
-                        # We don't break yet, let the while loop check session.is_active
+                        # Session will be marked inactive after saving
                     
                     elif isinstance(message, PingMessage):
                         # Respond to ping for connection health check

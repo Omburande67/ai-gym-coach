@@ -8,6 +8,7 @@ from app.core.config import settings
 
 # Create async engine
 database_url = settings.DATABASE_URL
+
 if database_url.startswith("postgresql://"):
     database_url = database_url.replace("postgresql://", "postgresql+asyncpg://")
 elif database_url.startswith("sqlite://"):
@@ -20,16 +21,9 @@ AsyncSessionLocal = async_sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False
 )
 
-
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     Dependency function to get database session.
-    
-    Yields:
-        AsyncSession: Database session
     """
     async with AsyncSessionLocal() as session:
-        try:
-            yield session
-        finally:
-            await session.close()
+        yield session
