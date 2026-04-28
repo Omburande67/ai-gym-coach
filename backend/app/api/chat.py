@@ -1,65 +1,65 @@
-"""Chat API endpoints for AI Coach"""
+# app/api/chat.py
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Optional, List
+from groq import Groq
+import os
+from dotenv import load_dotenv
+from typing import List, Dict, Any
 
-from app.api.deps import get_current_user
-from app.models.user import User
+# Load environment variables from .env file
+load_dotenv()
 
 router = APIRouter()
 
+# Initialize the Groq client
+# It will automatically read your key from the GROQ_API_KEY environment variable
+client = Groq()
+
+# Define the request and response models for your API
 class ChatRequest(BaseModel):
     message: str
-    context: Optional[dict] = None
 
 class ChatResponse(BaseModel):
     response: str
-    suggestions: Optional[List[str]] = None
-    context: Optional[dict] = None
-
 
 @router.post("/message", response_model=ChatResponse)
-async def chat_message(
-    request: ChatRequest,
-    current_user: User = Depends(get_current_user),
-):
+async def chat_message(chat_request: ChatRequest):
     """
-    Process chat messages and return AI coach responses.
+    Receives a user's message and returns a response from the Groq AI model.
     """
-    # Get user info safely
-    fitness_goals = current_user.fitness_goals if current_user.fitness_goals else ["General Fitness"]
-    user_name = current_user.email.split('@')[0] if current_user.email else "Athlete"
-    
-    # Simple response based on message content
-    message_lower = request.message.lower()
-    
-    if any(word in message_lower for word in ["push", "pushup", "push-up"]):
-        response = "💪 For push-ups: Keep your back straight, elbows at 45°, and lower until chest is 2 inches from ground. Breathe in on the way down, out on the way up!"
-        suggestions = ["Engage your core", "Don't let hips sag", "Full range of motion"]
-    
-    elif any(word in message_lower for word in ["squat", "squats"]):
-        response = "🏋️ For squats: Keep chest up, knees tracking over toes, go as low as comfortable (thighs parallel to ground). Maintain neutral spine throughout."
-        suggestions = ["Keep weight in heels", "Don't round your back", "Go deep but comfortable"]
-    
-    elif any(word in message_lower for word in ["plank"]):
-        response = "🔥 For plank: Keep body in straight line from head to heels, engage core, don't let hips sag or pike up. Hold steady and breathe!"
-        suggestions = ["Squeeze glutes", "Look slightly forward", "Don't hold breath"]
-    
-    elif any(word in message_lower for word in ["jumping", "jack"]):
-        response = "⭐ For jumping jacks: Land softly, keep arms straight overhead, engage core, breathe rhythmically. Start slow, build speed gradually."
-        suggestions = ["Land softly", "Full arm extension", "Maintain rhythm"]
-    
-    elif any(word in message_lower for word in ["motivation", "motivate", "keep going"]):
-        response = f"🔥 You've got this, {user_name}! Every rep makes you stronger. Consistency is key. Keep showing up and pushing your limits!"
-        suggestions = ["You're doing great!", "One more rep!", "Stay focused!"]
-    
-    else:
-        response = f"💪 Great question, {user_name}! Focus on proper form over speed. Your fitness goals: {', '.join(fitness_goals)}. Keep up the consistent work!"
-        suggestions = ["Stay hydrated", "Breathe properly", "Listen to your body"]
-    
-    return ChatResponse(
-        response=response,
-        suggestions=suggestions,
-        context={"user_goals": fitness_goals}
-    )
+    user_message = chat_request.message
+
+    # --- Optional: Create a system prompt to guide the AI ---
+    # This helps the AI act as a fitness coach.
+    system_prompt = {
+        "role": "system",
+        "content": "You are 'AI Coach', an enthusiastic and knowledgeable personal trainer. \
+                    You provide helpful, concise, and safe advice on exercise, form, \
+                    and fitness motivation. Keep your answers under 100 words."
+    }
+
+    user_prompt = {
+        "role": "user",
+        "content": user_message
+    }
+
+    try:
+        # Send the conversation to Groq
+        # The 'llama-3.3-70b-versatile' model is a great, fast, free option [citation:5][citation:9]
+        chat_completion = client.chat.completions.create(
+            messages=[system_prompt, user_prompt],
+            model="llama-3.3-70b-versatile",  # You can also try "llama-3.1-8b-instant" for even faster responses
+            temperature=0.7,  # Controls creativity (0-2, lower is more deterministic)
+            max_tokens=200,   # Limits the length of the response
+        )
+
+        # Extract the AI's response
+        ai_response = chat_completion.choices[0].message.content
+
+        return ChatResponse(response=ai_response)
+
+    except Exception as e:
+        print(f"Error calling Groq API: {e}")
+        # Return a friendly fallback message to the user if the API call fails
+        return ChatResponse(response="I'm having trouble connecting right now. Please try again in a moment.")

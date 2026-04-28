@@ -71,7 +71,8 @@ class ExerciseRecognizer:
         scores: Dict[ExerciseType, float] = {}
         
         for exercise_type in [ExerciseType.PUSHUP, ExerciseType.SQUAT, 
-                              ExerciseType.PLANK, ExerciseType.JUMPING_JACK]:
+                              ExerciseType.PLANK, ExerciseType.JUMPING_JACK,
+                              ExerciseType.NECK_ROTATION, ExerciseType.HAND_ROTATION]:
             exercise_def = exercise_registry.get_exercise(exercise_type)
             if exercise_def:
                 scores[exercise_type] = self._calculate_match_score(exercise_def)

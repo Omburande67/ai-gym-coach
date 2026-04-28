@@ -39,6 +39,7 @@ export interface UseWorkoutWebSocketReturn {
   disconnect: () => void;
   endSession: () => void;
   sendPoseData: (poseData: PoseData) => void;
+  setExercise: (exercise: string) => void;
   
   // Error state
   error: { message: string; code?: string } | null;
@@ -178,6 +179,12 @@ export function useWorkoutWebSocket(
     }
   }, []);
 
+  const setExercise = useCallback((exercise: string) => {
+    if (clientRef.current) {
+      clientRef.current.setExercise(exercise);
+    }
+  }, []);
+
   const isConnected = status === WebSocketStatus.CONNECTED;
 
   return {
@@ -189,6 +196,7 @@ export function useWorkoutWebSocket(
     disconnect,
     endSession,
     sendPoseData,
+    setExercise,
     error,
   };
 }

@@ -44,23 +44,25 @@ def calculate_angle(
         return None
     
     # Calculate vectors from point2 to point1 and point2 to point3
-    # Using 2D coordinates (x, y) for angle calculation
+    # Using 3D coordinates (x, y, z) for accurate angle calculation from any camera angle
     vector1_x = point1.x - point2.x
     vector1_y = point1.y - point2.y
+    vector1_z = point1.z - point2.z
     
     vector2_x = point3.x - point2.x
     vector2_y = point3.y - point2.y
+    vector2_z = point3.z - point2.z
     
     # Calculate magnitudes of vectors
-    magnitude1 = math.sqrt(vector1_x**2 + vector1_y**2)
-    magnitude2 = math.sqrt(vector2_x**2 + vector2_y**2)
+    magnitude1 = math.sqrt(vector1_x**2 + vector1_y**2 + vector1_z**2)
+    magnitude2 = math.sqrt(vector2_x**2 + vector2_y**2 + vector2_z**2)
     
     # Handle edge case where points are too close (avoid division by zero)
     if magnitude1 < 1e-6 or magnitude2 < 1e-6:
         return None
     
     # Calculate dot product
-    dot_product = vector1_x * vector2_x + vector1_y * vector2_y
+    dot_product = vector1_x * vector2_x + vector1_y * vector2_y + vector1_z * vector2_z
     
     # Calculate angle using dot product formula: cos(θ) = (a·b) / (|a||b|)
     cos_angle = dot_product / (magnitude1 * magnitude2)

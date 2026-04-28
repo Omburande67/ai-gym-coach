@@ -23,7 +23,8 @@ import {
   WebSocketStatus,
   WorkoutFeedback,
   SessionEndMessage,
-  SessionSavedMessage
+  SessionSavedMessage,
+  SetExerciseMessage
 } from '../types/websocket';
 
 export interface WebSocketClientConfig {
@@ -130,6 +131,21 @@ export class WebSocketClient {
       // Buffer message for later transmission
       // Implements Requirement 14.4: Buffer keypoints when disconnected
       this.bufferMessage(message);
+    }
+  }
+
+  /**
+   * Send explicit exercise selection to server
+   */
+  public setExercise(exercise: string): void {
+    const message: SetExerciseMessage = {
+      type: MessageType.SET_EXERCISE,
+      exercise: exercise,
+    };
+    if (this.isConnected()) {
+      this.sendMessage(message);
+    } else {
+      console.warn('Cannot set exercise: WebSocket not connected');
     }
   }
 

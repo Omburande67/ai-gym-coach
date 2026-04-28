@@ -38,6 +38,9 @@ class WorkoutSessionCreate(BaseModel):
     user_id: UUID
     start_time: datetime
     end_time: Optional[datetime] = None
+    session_type: str = Field(default="live", description="Source of session: live or video")
+    total_reps: int = Field(default=0, description="Total reps across all exercises")
+    average_form_score: Optional[float] = Field(None, ge=0, le=100, description="Average form score")
     exercise_records: List[ExerciseRecordCreate] = Field(default_factory=list)
 
 
@@ -57,6 +60,7 @@ class WorkoutSessionResponse(BaseModel):
     user_id: UUID
     start_time: datetime
     end_time: Optional[datetime]
+    session_type: str
     total_duration_seconds: Optional[int]
     total_reps: int
     average_form_score: Optional[float]
@@ -76,6 +80,10 @@ class WorkoutSummary(BaseModel):
     top_mistakes: List[dict] = Field(..., description="Top 3 most frequent form mistakes")
     recommendations: List[str] = Field(..., description="Personalized recommendations")
     exercises: List[ExerciseRecordResponse] = Field(..., description="Exercise breakdown")
+    detailed_analysis: Optional[str] = Field(None, description="In-depth AI analysis of the session")
+    strengths: Optional[str] = Field(None, description="What the user did well")
+    improvements: Optional[str] = Field(None, description="Where the user can improve")
+    consistency_rating: Optional[str] = Field(None, description="Consistency rating (e.g., Stable, High)")
 
 
 class WorkoutPlanCreate(BaseModel):

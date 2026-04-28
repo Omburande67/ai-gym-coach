@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     # LLM API
     OPENAI_API_KEY: str = ""
     XAI_API_KEY: str = ""
+    GROQ_API_KEY: str = ""  # ← ADDED: Groq API key for free fast AI responses
 
     # Server
     HOST: str = "0.0.0.0"
@@ -35,6 +36,7 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=True,
+        extra="ignore",  # ← ADDED: This prevents "extra_forbidden" errors
     )
 
 

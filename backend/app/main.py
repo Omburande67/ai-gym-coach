@@ -1,5 +1,5 @@
 """Main FastAPI application entry point"""
-
+from app.api import auth, users, websocket, workouts, chat
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -51,6 +51,7 @@ app.add_middleware(
 )
 
 # Include routers
+app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(websocket.router)

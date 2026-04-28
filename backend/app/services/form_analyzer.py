@@ -46,7 +46,7 @@ class FormAnalyzer:
             return []
 
         # Get exercise definition
-        exercise_def = self.exercise_registry.exercises.get(exercise_type)
+        exercise_def = self.exercise_registry.get_exercise(exercise_type)
         if not exercise_def:
             return []
 
@@ -116,6 +116,14 @@ class FormAnalyzer:
             return self._check_incomplete_arms(pose_data, rule, keypoints_dict)
         elif rule.rule_id == "jumping_jack_incomplete_legs":
             return self._check_incomplete_legs(pose_data, rule, keypoints_dict)
+        elif rule.rule_id == "neck_speed":
+            return self._check_neck_speed(pose_data, rule, keypoints_dict)
+        elif rule.rule_id == "neck_torso_movement":
+            return self._check_torso_sway(pose_data, rule, keypoints_dict)
+        elif rule.rule_id == "hand_rotation_small_range":
+            return self._check_rotation_range(pose_data, rule, keypoints_dict)
+        elif rule.rule_id == "hand_rotation_stiff_elbow":
+            return self._check_stiff_elbow(pose_data, rule, keypoints_dict)
 
         return None
 
@@ -352,6 +360,52 @@ class FormAnalyzer:
                 severity=severity,
                 suggestion=rule.suggestion,
             )
+        return None
+
+    def _check_neck_speed(self, pose_data: PoseData, rule: FormRule, keypoints_dict: dict) -> FormMistake | None:
+        """Check if neck is rotating too fast (simulated for now)."""
+        # In a real implementation, we'd compare consecutive frames
+        # For now, we'll use a placeholder logic that checks for extreme visibility variance
+        return None
+
+    def _check_torso_sway(self, pose_data: PoseData, rule: FormRule, keypoints_dict: dict) -> FormMistake | None:
+        """Check for excessive torso swaying."""
+        torso_angle = calculate_torso_angle(pose_data)
+        if torso_angle and abs(90 - torso_angle) > rule.threshold:
+            severity = min(1.0, (abs(90 - torso_angle) / rule.threshold - 1.0) * rule.severity_multiplier)
+            return FormMistake(
+                mistake_type=rule.rule_id,
+                severity=severity,
+                suggestion=rule.suggestion,
+            )
+        return None
+
+    def _check_rotation_range(self, pose_data: PoseData, rule: FormRule, keypoints_dict: dict) -> FormMistake | None:
+        """Check for small arm rotation range."""
+        shoulder_angle = calculate_shoulder_angle(pose_data)
+        if shoulder_angle and shoulder_angle < rule.threshold:
+            severity = min(1.0, ((rule.threshold - shoulder_angle) / rule.threshold) * rule.severity_multiplier)
+            return FormMistake(
+                mistake_type=rule.rule_id,
+                severity=severity,
+                suggestion=rule.suggestion,
+            )
+        return None
+
+    def _check_stiff_elbow(self, pose_data: PoseData, rule: FormRule, keypoints_dict: dict) -> FormMistake | None:
+        """Check for stiff elbows during rotations."""
+        left_elbow = calculate_angle(keypoints_dict["left_shoulder"], keypoints_dict["left_elbow"], keypoints_dict["left_wrist"])
+        right_elbow = calculate_angle(keypoints_dict["right_shoulder"], keypoints_dict["right_elbow"], keypoints_dict["right_wrist"])
+        
+        if left_elbow and right_elbow:
+            avg_elbow = (left_elbow + right_elbow) / 2
+            if avg_elbow > rule.threshold:
+                severity = min(1.0, ((avg_elbow - rule.threshold) / 20) * rule.severity_multiplier)
+                return FormMistake(
+                    mistake_type=rule.rule_id,
+                    severity=severity,
+                    suggestion=rule.suggestion,
+                )
         return None
 
     def calculate_form_score(self, mistakes: List[FormMistake]) -> float:

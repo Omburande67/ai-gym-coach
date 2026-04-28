@@ -23,7 +23,8 @@ export async function fetchWorkoutSummary(sessionId: string): Promise<WorkoutSum
     ...getAuthHeader(),
   };
 
-  const response = await fetch(`${API_BASE_URL}/api/workouts/${sessionId}`, {
+  // Use the /summary endpoint which returns the full AI-powered coaching report
+  const response = await fetch(`${API_BASE_URL}/api/workouts/${sessionId}/summary`, {
     headers,
   });
 
@@ -31,7 +32,25 @@ export async function fetchWorkoutSummary(sessionId: string): Promise<WorkoutSum
     throw new Error('Failed to fetch workout summary: ' + response.status);
   }
 
-  return response.json();
+  const data = await response.json();
+  // Normalize response into WorkoutSummaryData shape
+  return {
+    session_id: data.session_id || sessionId,
+    total_reps: data.total_reps || 0,
+    total_duration_seconds: data.total_duration_seconds || 0,
+    average_form_score: data.average_form_score || 0,
+    top_mistakes: data.top_mistakes || [],
+    recommendations: data.recommendations || [],
+    exercises: data.exercises || [],
+    detailed_analysis: data.detailed_analysis,
+    strengths: data.strengths,
+    improvements: data.improvements,
+    consistency_rating: data.consistency_rating,
+    total_workouts: data.total_workouts || 0,
+    current_streak: data.current_streak || 0,
+    longest_streak: data.longest_streak || 0,
+    exercise_breakdown: data.exercise_breakdown || {},
+  };
 }
 
 /**
@@ -120,4 +139,48 @@ export async function deleteWorkoutSession(sessionId: string): Promise<void> {
   if (!response.ok) {
     throw new Error('Failed to delete workout: ' + response.status);
   }
+}
+
+/**
+ * Analyze an uploaded video file for workout data
+ */
+export async function analyzeVideoFile(file: File, exerciseType?: string): Promise<WorkoutSummaryData> {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (exerciseType) {
+    formData.append('exercise_type', exerciseType);
+  }
+
+  const headers = getAuthHeader();
+
+  const response = await fetch(`${API_BASE_URL}/api/workouts/analyze-video`, {
+    method: 'POST',
+    headers,
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to analyze video: ${response.status} - ${errorText}`);
+  }
+
+  const data = await response.json();
+  // Normalize API WorkoutSummary into WorkoutSummaryData shape
+  return {
+    session_id: data.session_id || '',
+    total_reps: data.total_reps || 0,
+    total_duration_seconds: data.total_duration_seconds || 0,
+    average_form_score: data.average_form_score || 0,
+    top_mistakes: data.top_mistakes || [],
+    recommendations: data.recommendations || [],
+    exercises: data.exercises || [],
+    detailed_analysis: data.detailed_analysis,
+    strengths: data.strengths,
+    improvements: data.improvements,
+    consistency_rating: data.consistency_rating,
+    total_workouts: 0,
+    current_streak: 0,
+    longest_streak: 0,
+    exercise_breakdown: {},
+  };
 }

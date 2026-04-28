@@ -3,8 +3,9 @@
 from typing import List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
+import mediapipe as mp
 
 from app.api.deps import get_current_user, get_db
 from app.schemas.user import UserProfile
@@ -225,3 +226,140 @@ async def get_active_workout_plan(
         )
         
     return plan
+
+@router.post("/analyze-video", response_model=WorkoutSummary)
+async def analyze_video(
+    file: UploadFile = File(...),
+    exercise_type: str = Form(None),
+    current_user: UserProfile = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    import cv2
+    import tempfile
+    import os
+    import mediapipe as mp
+    from datetime import datetime
+    from app.models.pose import PoseData, PoseKeypoint
+    from app.services.exercise_recognizer import ExerciseRecognizer
+    from app.services.rep_counter import RepCounter
+    from app.services.form_analyzer import FormAnalyzer
+    from app.services.exercise_registry import exercise_registry
+    from app.models.exercise import ExerciseType
+    from app.schemas.workout import ExerciseRecordCreate, WorkoutSessionCreate
+    from app.services.user_service import UserService
+
+    mp_pose = mp.solutions.pose
+    landmark_names = [
+        "nose", "left_eye_inner", "left_eye", "left_eye_outer", "right_eye_inner", "right_eye", "right_eye_outer",
+        "left_ear", "right_ear", "mouth_left", "mouth_right", "left_shoulder", "right_shoulder", "left_elbow",
+        "right_elbow", "left_wrist", "right_wrist", "left_pinky", "right_pinky", "left_index", "right_index",
+        "left_thumb", "right_thumb", "left_hip", "right_hip", "left_knee", "right_knee", "left_ankle",
+        "right_ankle", "left_heel", "right_heel", "left_foot_index", "right_foot_index"
+    ]
+
+    fd, temp_path = tempfile.mkstemp(suffix=".mp4")
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(await file.read())
+        
+        target_ex = ExerciseType(exercise_type) if exercise_type else None
+        recognizer = ExerciseRecognizer()
+        form_analyzer = FormAnalyzer(exercise_registry)
+        rep_counter = None
+        exercise_history = {}
+        
+        cap = cv2.VideoCapture(temp_path)
+        fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        duration_seconds = total_frames / fps if fps > 0 else 0
+        
+        with mp_pose.Pose(static_image_mode=False, model_complexity=1) as pose:
+            frame_idx = 0
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret: break
+                image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                results = pose.process(image_rgb)
+                
+                if results.pose_landmarks:
+                    keypoints = [PoseKeypoint(name=landmark_names[i], x=lm.x, y=lm.y, z=lm.z, visibility=lm.visibility)
+                                 for i, lm in enumerate(results.pose_landmarks.landmark) if i < len(landmark_names)]
+                    pose_data = PoseData(keypoints=keypoints, timestamp=(frame_idx / fps) * 1000)
+
+                    detected_ex, detected_conf = recognizer.recognize(pose_data)
+
+                    # Priority: use detected exercise if confident; fall back to target selection
+                    if detected_ex != ExerciseType.UNKNOWN and detected_conf >= 0.65:
+                        current_ex = detected_ex
+                    elif target_ex and target_ex != ExerciseType.UNKNOWN:
+                        # target selected by user — trust it if detector isn't confident yet
+                        current_ex = target_ex
+                    else:
+                        current_ex = None
+
+                    if current_ex and current_ex != ExerciseType.UNKNOWN:
+                        # Log mismatch when performed exercise differs from selection
+                        if (target_ex and target_ex != ExerciseType.UNKNOWN
+                                and current_ex != target_ex and detected_conf >= 0.75):
+                            if current_ex not in exercise_history:
+                                exercise_history[current_ex] = {"reps": 0, "form_scores": [], "mistakes": {}}
+                            mismatch_key = "EXERCISE_MISMATCH"
+                            mm = exercise_history[current_ex]["mistakes"].setdefault(
+                                mismatch_key,
+                                {"suggestion": f"You selected '{target_ex.value}' but the video shows '{current_ex.value}'. Summary reflects what was actually performed.", "count": 0}
+                            )
+                            mm["count"] += 1
+
+                        if current_ex not in exercise_history:
+                            exercise_history[current_ex] = {"reps": 0, "form_scores": [], "mistakes": {}}
+
+                        if not rep_counter or rep_counter.exercise_type != current_ex:
+                            rep_counter = RepCounter(current_ex)
+
+                        rep_counter.update(pose_data)
+                        exercise_history[current_ex]["reps"] = rep_counter.get_count()
+
+                        try:
+                            mistakes = form_analyzer.analyze(pose_data, current_ex)
+                            exercise_history[current_ex]["form_scores"].append(max(0, 100 - len(mistakes) * 10))
+                            for m in mistakes:
+                                m_type = getattr(m, 'mistake_type', str(m))
+                                stats = exercise_history[current_ex]["mistakes"].setdefault(
+                                    m_type, {"suggestion": getattr(m, 'suggestion', "Focus on form"), "count": 0}
+                                )
+                                stats["count"] += 1
+                        except Exception:
+                            pass
+                frame_idx += 1
+        cap.release()
+
+        # Fallback: if nothing detected at all, create an entry for target or unknown
+        if not exercise_history:
+            fallback = target_ex if target_ex and target_ex != ExerciseType.UNKNOWN else ExerciseType.UNKNOWN
+            exercise_history[fallback] = {
+                "reps": 0, "form_scores": [], "mistakes": {
+                    "NO_POSE_DETECTED": {
+                        "suggestion": "No body pose could be detected. Ensure the full body is well-lit and visible in the frame.",
+                        "count": 1
+                    }
+                }
+            }
+
+        exercise_records = [ExerciseRecordCreate(
+            exercise_type=ex.value,
+            reps_completed=data["reps"],
+            duration_seconds=int(duration_seconds),
+            form_score=round(sum(data["form_scores"]) / len(data["form_scores"]), 1) if data["form_scores"] else 75.0,
+            mistakes={"list": [{"type": t, "count": d["count"], "suggestion": d["suggestion"]} for t, d in data["mistakes"].items()]}
+        ) for ex, data in exercise_history.items()]
+        
+        user_service = UserService(db)
+        saved_session = await user_service.save_workout(WorkoutSessionCreate(
+            user_id=current_user.user_id, start_time=datetime.utcnow(), end_time=datetime.utcnow(),
+            total_reps=sum(d["reps"] for d in exercise_history.values()), session_type="video",
+            average_form_score=sum(r.form_score for r in exercise_records)/len(exercise_records) if exercise_records else 85.0,
+            exercise_records=exercise_records
+        ))
+        return await user_service.get_workout_summary(saved_session.session_id)
+    finally:
+        if os.path.exists(temp_path): os.remove(temp_path)

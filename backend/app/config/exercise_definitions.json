@@ -226,6 +226,94 @@
       "camera_distance_meters": 3.0,
       "camera_height": "waist",
       "camera_angle": "front"
+    },
+    "neck_rotation": {
+      "exercise_type": "neck_rotation",
+      "display_name": "Neck Rotation",
+      "description": "A warm-up exercise rotating the neck left and right",
+      "recognition_pattern": {
+        "body_orientation": "vertical",
+        "torso_angle_min": 70,
+        "torso_angle_max": 90,
+        "primary_joint": "neck",
+        "oscillation_required": true,
+        "min_oscillation_range": 20,
+        "stationary_feet": true
+      },
+      "angle_thresholds": {
+        "up_min": 15,
+        "up_max": 90,
+        "down_min": -90,
+        "down_max": -15,
+        "hysteresis": 5
+      },
+      "is_duration_based": false,
+      "min_rep_duration_seconds": 1.0,
+      "form_rules": [
+        {
+          "rule_id": "neck_speed",
+          "description": "Rotating neck too quickly",
+          "joint_angles": ["neck"],
+          "threshold": 45,
+          "severity_multiplier": 1.0,
+          "suggestion": "Slow down your neck rotations to avoid strain"
+        },
+        {
+          "rule_id": "neck_torso_movement",
+          "description": "Excessive torso swaying",
+          "joint_angles": ["torso"],
+          "threshold": 10,
+          "severity_multiplier": 0.8,
+          "suggestion": "Keep your body still while rotating your neck"
+        }
+      ],
+      "camera_distance_meters": 1.5,
+      "camera_height": "chest",
+      "camera_angle": "front"
+    },
+    "hand_rotation": {
+      "exercise_type": "hand_rotation",
+      "display_name": "Hand Rotation",
+      "description": "A warm-up exercise rotating the arms in circles",
+      "recognition_pattern": {
+        "body_orientation": "vertical",
+        "torso_angle_min": 70,
+        "torso_angle_max": 90,
+        "primary_joint": "shoulder",
+        "oscillation_required": true,
+        "min_oscillation_range": 30,
+        "stationary_feet": true
+      },
+      "angle_thresholds": {
+        "up_min": 120,
+        "up_max": 180,
+        "down_min": 0,
+        "down_max": 30,
+        "hysteresis": 10
+      },
+      "is_duration_based": false,
+      "min_rep_duration_seconds": 0.5,
+      "form_rules": [
+        {
+          "rule_id": "hand_rotation_small_range",
+          "description": "Arms not rotating enough",
+          "joint_angles": ["shoulder"],
+          "threshold": 45,
+          "severity_multiplier": 1.0,
+          "suggestion": "Make larger circles with your arms"
+        },
+        {
+          "rule_id": "hand_rotation_stiff_elbow",
+          "description": "Keeping arms too stiff",
+          "joint_angles": ["elbow"],
+          "threshold": 160,
+          "severity_multiplier": 0.5,
+          "suggestion": "Keep a slight, relaxed bend in your elbows"
+        }
+      ],
+      "camera_distance_meters": 2.5,
+      "camera_height": "waist",
+      "camera_angle": "front"
     }
   }
 }

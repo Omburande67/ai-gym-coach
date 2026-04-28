@@ -11,6 +11,9 @@ class ExerciseType(str, Enum):
     SQUAT = "squat"
     PLANK = "plank"
     JUMPING_JACK = "jumping_jack"
+    HAND_ROTATION = "hand_rotation"
+    HIGH_KNEES = "high_knees"
+    NECK_ROTATION = "neck_rotation"
     UNKNOWN = "unknown"
 
 

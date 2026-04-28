@@ -23,6 +23,10 @@ class WorkoutSession(Base):
         nullable=False
     )
 
+    session_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="live"
+    )
+
     # ✅ FIXED (timezone=True)
     start_time: Mapped[datetime] = mapped_column(
         TIMESTAMP(timezone=True), nullable=False

@@ -15,6 +15,7 @@ export enum MessageType {
   POSE_DATA = 'pose_data',
   PING = 'ping',
   SESSION_END = 'session_end',
+  SET_EXERCISE = 'set_exercise',
   
   // Server -> Client messages
   EXERCISE_DETECTED = 'exercise_detected',
@@ -42,7 +43,12 @@ export interface SessionEndMessage {
   timestamp: number;
 }
 
-export type ClientMessage = PoseDataMessage | PingMessage | SessionEndMessage;
+export interface SetExerciseMessage {
+  type: MessageType.SET_EXERCISE;
+  exercise: string;
+}
+
+export type ClientMessage = PoseDataMessage | PingMessage | SessionEndMessage | SetExerciseMessage;
 
 // Server -> Client Messages
 

@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from uuid import UUID
 
-from sqlalchemy import select, text
+from sqlalchemy import select, text, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -229,13 +229,23 @@ class UserService:
             )
 
         # Create workout session
+        # Ensure datetimes are naive for TIMESTAMP WITHOUT TIME ZONE columns
+        start_time = workout_data.start_time
+        if start_time and start_time.tzinfo:
+            start_time = start_time.replace(tzinfo=None)
+            
+        end_time = workout_data.end_time
+        if end_time and end_time.tzinfo:
+            end_time = end_time.replace(tzinfo=None)
+
         workout_session = WorkoutSession(
             user_id=workout_data.user_id,
-            start_time=workout_data.start_time,
-            end_time=workout_data.end_time,
+            start_time=start_time,
+            end_time=end_time,
             total_duration_seconds=total_duration_seconds,
             total_reps=total_reps,
             average_form_score=average_form_score,
+            session_type=workout_data.session_type
         )
 
         self.db.add(workout_session)
@@ -331,8 +341,11 @@ class UserService:
                 if isinstance(record.mistakes, list):
                     all_mistakes.extend(record.mistakes)
                 elif isinstance(record.mistakes, dict):
-                    # Handle single mistake dict if stored that way
-                    all_mistakes.append(record.mistakes)
+                    # Check for wrapped list
+                    if "list" in record.mistakes:
+                        all_mistakes.extend(record.mistakes["list"])
+                    else:
+                        all_mistakes.append(record.mistakes)
         
         # Count frequency of each mistake type
         mistake_counts = {}
@@ -361,26 +374,61 @@ class UserService:
             for m_type, count in sorted_mistakes
         ]
         
-        # Generate recommendations based on mistakes
-        recommendations = []
-        if not top_mistakes:
-            recommendations.append("Excellent work! Your form was perfect. Try increasing intensity next time.")
-        else:
-            for m in top_mistakes:
-                recommendations.append(f"Focus on your {m['type'].replace('_', ' ')}: {m['suggestion']}")
+        # Get user statistics
+        user_id = session.user_id
+        workouts_result = await self.db.execute(
+            select(func.count(WorkoutSession.session_id))
+            .where(WorkoutSession.user_id == user_id)
+        )
+        total_workouts = workouts_result.scalar() or 0
+        
+        # Get streaks (simulated or simplified for now)
+        current_streak = 1 # Placeholder
+        longest_streak = 1 # Placeholder
+        
+        # Calculate exercise breakdown
+        exercise_breakdown = {}
+        for record in session.exercise_records:
+            exercise_breakdown[record.exercise_type] = exercise_breakdown.get(record.exercise_type, 0) + record.reps_completed
             
-            if len(top_mistakes) > 1:
-                recommendations.append("Consider doing a mobility session to improve your range of motion.")
+        total_duration = session.total_duration_seconds or 0
+        exercises = [ExerciseRecordResponse.model_validate(r) for r in session.exercise_records]
 
-        return {
+        # Generate AI recommendations and descriptive analysis
+        from app.services.llm_service import LLMService
+        llm_service = LLMService()
+        
+        # Prepare data for AI analysis
+        ai_input = {
+            "total_reps": session.total_reps,
+            "total_duration_seconds": total_duration,
+            "average_form_score": session.average_form_score or 0,
+            "exercises": exercises,  # Pass full ExerciseRecordResponse objects
+            "top_mistakes": top_mistakes
+        }
+        
+        ai_summary = await llm_service.generate_workout_summary(ai_input)
+        
+        # Prepare final response dictionary
+        summary_data = {
             "session_id": session.session_id,
             "total_reps": session.total_reps,
-            "total_duration_seconds": session.total_duration_seconds or 0,
-            "average_form_score": float(session.average_form_score) if session.average_form_score is not None else 100.0,
+            "total_workouts": total_workouts,
+            "average_form_score": session.average_form_score or 100.0,
+            "exercise_breakdown": exercise_breakdown,
+            "current_streak": current_streak,
+            "longest_streak": longest_streak,
+            "total_duration_seconds": total_duration,
             "top_mistakes": top_mistakes,
-            "recommendations": recommendations,
-            "exercises": [ExerciseRecordResponse.model_validate(r) for r in session.exercise_records]
+            "recommendations": [ai_summary.get('ai_coach_tip', 'Keep up the momentum!')],
+            "exercises": exercises,
+            "detailed_analysis": ai_summary.get('detailed_analysis'),
+            "strengths": ai_summary.get('strengths'),
+            "improvements": ai_summary.get('improvements'),
+            "consistency_rating": ai_summary.get('consistency_rating')
         }
+        
+        return summary_data
 
     async def generate_and_save_plan(self, user_id: UUID) -> WorkoutPlanResponse:
         """
@@ -450,11 +498,20 @@ class UserService:
 
     async def _update_streak(self, user_id: UUID, session_date: datetime):
         """Update user streak based on new workout session."""
+        # Ensure session_date is naive
+        if session_date and session_date.tzinfo:
+            session_date = session_date.replace(tzinfo=None)
+
         result = await self.db.execute(select(WorkoutStreak).where(WorkoutStreak.user_id == user_id))
         streak = result.scalar_one_or_none()
 
         if not streak:
-            streak = WorkoutStreak(user_id=user_id, current_streak=1, longest_streak=1, last_workout_date=session_date)
+            streak = WorkoutStreak(
+                user_id=user_id, 
+                current_streak=1, 
+                longest_streak=1, 
+                last_workout_date=session_date
+            )
             self.db.add(streak)
         else:
             if streak.last_workout_date:

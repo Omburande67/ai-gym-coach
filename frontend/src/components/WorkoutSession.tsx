@@ -20,7 +20,7 @@ import { WebSocketStatus } from '../types/websocket';
 import { checkFullBodyVisibility, getVisibilityWarningMessage, VisibilityStatus } from '../utils/visibility';
 import { WorkoutSummary } from './WorkoutSummary';
 import { WorkoutSummaryData } from '../types/workout';
-import { fetchWorkoutSummary } from '../lib/api';
+import { fetchWorkoutSummary, analyzeVideoFile } from '../lib/api';
 
 export interface WorkoutSessionProps {
   userId: string;
@@ -30,11 +30,10 @@ export interface WorkoutSessionProps {
 
 export function WorkoutSession({
   userId,
-  websocketUrl = 'ws://127.0.0.1:8000',
+  websocketUrl = 'ws://localhost:8000',
   onSessionEnd,
 }: WorkoutSessionProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isActive, setIsActive] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [currentPose, setCurrentPose] = useState<PoseData | null>(null);
@@ -45,6 +44,9 @@ export function WorkoutSession({
   const [isTrackingPaused, setIsTrackingPaused] = useState(false);
   const [workoutSummary, setWorkoutSummary] = useState<WorkoutSummaryData | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [selectedExercise, setSelectedExercise] = useState<string>('squat');
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [isProcessingVideo, setIsProcessingVideo] = useState(false);
 
   // WebSocket connection
   const {
@@ -56,6 +58,7 @@ export function WorkoutSession({
     disconnect,
     endSession: callEndSession,
     sendPoseData,
+    setExercise,
     error,
   } = useWorkoutWebSocket({
     url: websocketUrl,
@@ -68,8 +71,13 @@ export function WorkoutSession({
         setIsSaving(false);
       } catch (err) {
         console.error('Failed to fetch summary:', err);
+        setWorkoutSummary({
+          session_id: sessionId,
+          total_reps: 0, total_workouts: 0, average_form_score: 0,
+          exercise_breakdown: {}, current_streak: 0, longest_streak: 0,
+          total_duration_seconds: 0, top_mistakes: [], recommendations: [], exercises: []
+        });
         setIsSaving(false);
-        // Fallback or error state
       }
     }
   });
@@ -96,18 +104,18 @@ export function WorkoutSession({
     }
   };
 
+  // Send selected exercise when connected
+  useEffect(() => {
+    if (isConnected && selectedExercise) {
+      setExercise(selectedExercise);
+    }
+  }, [isConnected, selectedExercise, setExercise]);
+
   // Check if user has seen tutorial before (using localStorage)
   useEffect(() => {
     const tutorialSeen = localStorage.getItem(`workout-tutorial-seen-${userId}`);
     setHasSeenTutorial(tutorialSeen === 'true');
   }, [userId]);
-
-  // Show tutorial on first workout session
-  useEffect(() => {
-    if (!hasSeenTutorial && !isActive && !showTutorial) {
-      // Don't show immediately, wait for user to click start
-    }
-  }, [hasSeenTutorial, isActive, showTutorial]);
 
   // Update video dimensions when video loads
   useEffect(() => {
@@ -187,8 +195,6 @@ export function WorkoutSession({
         }
       }
 
-      // Instead of alert, we'll let the error be displayed in the UI via the error property from useWorkoutWebSocket or a local state
-      // Actually, let's use a local state for camera errors since useWorkoutWebSocket is for WS errors
       alert(`${errorTitle}: ${errorMessage}`);
     }
   };
@@ -215,8 +221,6 @@ export function WorkoutSession({
     }
 
     setIsActive(false);
-
-    // Note: onSessionEnd will be called when user closes the summary modal
   };
 
   const handleCloseSummary = () => {
@@ -260,45 +264,51 @@ export function WorkoutSession({
 
   return (
     <div className="flex flex-col items-center gap-6 p-4 w-full max-w-7xl mx-auto">
-      <div className="w-full flex justify-between items-center bg-white/5 p-6 rounded-2xl border border-white/10 glass-card">
-        <div>
-           <h1 className="text-3xl font-black gradient-text-neural">Live Tracking</h1>
-           <p className="text-gray-400 text-sm">AI-Powered Biometric Session</p>
+      <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-6 bg-white/5 p-8 rounded-3xl border border-white/10 glass-card relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 blur-3xl rounded-full -mr-16 -mt-16" />
+        
+        <div className="relative z-10">
+           <h1 className="text-4xl font-black gradient-text-neural tracking-tight">Live Tracking</h1>
+           <p className="text-gray-400 text-sm mt-1 font-medium">AI-Powered Biometric Session</p>
         </div>
         
+        <div className="flex flex-col gap-2 relative z-10">
+          <label className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Target Exercise</label>
+          <div className="relative group">
+            <div className="absolute inset-0 bg-blue-500/20 blur-md opacity-0 group-hover:opacity-100 transition-opacity rounded-xl" />
+            <select
+              value={selectedExercise}
+              onChange={(e) => setSelectedExercise(e.target.value)}
+              disabled={isActive}
+              className="w-full bg-white/10 border border-white/20 text-white p-4 rounded-xl focus:outline-none focus:border-blue-500 transition-all appearance-none cursor-pointer font-bold relative z-10 disabled:opacity-50 disabled:cursor-not-allowed shadow-inner"
+            >
+              <option className="bg-[#0a0e27]" value="pushup">Push-ups</option>
+              <option className="bg-[#0a0e27]" value="squat">Squats</option>
+              <option className="bg-[#0a0e27]" value="plank">Plank</option>
+              <option className="bg-[#0a0e27]" value="jumping_jack">Jumping Jacks</option>
+              <option className="bg-[#0a0e27]" value="neck_rotation">Neck Rotations</option>
+              <option className="bg-[#0a0e27]" value="hand_rotation">Hand Rotations</option>
+            </select>
+            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-blue-400 z-20">
+              <i className="bi bi-chevron-down"></i>
+            </div>
+          </div>
+        </div>
+
         {/* Connection Status */}
-        <div className="flex items-center gap-4 bg-white/5 px-4 py-2 rounded-full border border-white/10">
-          <div className={`w-3 h-3 rounded-full animate-pulse ${getStatusColor()}`} />
-          <span className="text-sm font-bold text-gray-300">
-            {status === WebSocketStatus.CONNECTED && (
-              <span className="flex items-center gap-2">
-                <i className="bi bi-broadcast"></i> ONLINE
-              </span>
-            )}
-            {status === WebSocketStatus.CONNECTING && (
-              <span className="flex items-center gap-2 text-yellow-500">
-                <i className="bi bi-hourglass-split animate-spin"></i> CONNECTING...
-              </span>
-            )}
-            {status === WebSocketStatus.RECONNECTING && (
-              <span className="flex items-center gap-2 text-yellow-500">
-                <i className="bi bi-arrow-clockwise animate-spin"></i> RECONNECTING...
-              </span>
-            )}
-            {status === WebSocketStatus.DISCONNECTED && (
-              <span className="flex items-center gap-2">
-                <i className="bi bi-plug"></i> OFFLINE
-              </span>
-            )}
-            {status === WebSocketStatus.ERROR && (
-              <span className="flex items-center gap-2 text-red-500">
-                <i className="bi bi-exclamation-triangle-fill"></i> ERROR
-              </span>
-            )}
-          </span>
+        <div className="md:col-span-2 flex items-center justify-between bg-white/5 px-6 py-3 rounded-2xl border border-white/10 mt-2">
+          <div className="flex items-center gap-3">
+            <div className={`w-3 h-3 rounded-full shadow-[0_0_10px_rgba(0,0,0,0.5)] ${status === WebSocketStatus.CONNECTED ? 'animate-pulse' : ''} ${getStatusColor()}`} />
+            <span className="text-xs font-black text-gray-300 tracking-widest uppercase">
+              {status === WebSocketStatus.CONNECTED && "Neural Link Active"}
+              {status === WebSocketStatus.CONNECTING && "Establishing Link..."}
+              {status === WebSocketStatus.DISCONNECTED && "Link Offline"}
+              {status === WebSocketStatus.ERROR && "Link Failure"}
+            </span>
+          </div>
           {bufferSize > 0 && (
-            <span className="text-[10px] text-gray-500 border border-white/10 px-1 rounded uppercase font-mono">
-              BUF: {bufferSize}
+            <span className="text-[10px] text-gray-500 border border-white/10 px-2 py-0.5 rounded-full uppercase font-mono bg-black/20">
+              BUF_STRM: {bufferSize}
             </span>
           )}
         </div>
@@ -431,31 +441,74 @@ export function WorkoutSession({
           </div>
 
           {/* Controls Bar */}
-          <div className="glass-card p-4 flex gap-4" role="group" aria-label="Session Controls">
+          <div className="glass-card p-4 flex flex-col gap-4" role="group" aria-label="Session Controls">
             {!isActive ? (
               <>
-                <button
-                  onClick={startSession}
-                  className="glow-button flex-1 py-4 text-lg font-black tracking-widest uppercase flex items-center justify-center gap-3"
-                  aria-label="Initialize workout session"
-                >
-                  <i className="bi bi-play-circle-fill" aria-hidden="true"></i> INITIALIZE SESSION
-                </button>
-                <button
-                  onClick={() => setShowTutorial(true)}
-                  className="glass-card px-8 py-4 text-sm font-bold text-gray-300 hover:text-white border-white/10 hover:border-white/30 transition-all uppercase flex items-center gap-2"
-                  aria-label="View hardware setup guide"
-                >
-                  <i className="bi bi-gear-wide-connected" aria-hidden="true"></i> Setup
-                </button>
+                <div className="flex gap-4">
+                  <button
+                    onClick={startSession}
+                    className="glow-button flex-1 py-4 text-lg font-black tracking-widest uppercase flex items-center justify-center gap-3"
+                    aria-label="Initialize workout session"
+                  >
+                    <i className="bi bi-play-circle-fill" aria-hidden="true"></i> START LIVE TRACKING
+                  </button>
+                  <button
+                    onClick={() => setShowTutorial(true)}
+                    className="glass-card px-8 py-4 text-sm font-bold text-gray-300 hover:text-white border-white/10 hover:border-white/30 transition-all uppercase flex items-center gap-2"
+                    aria-label="View hardware setup guide"
+                  >
+                    <i className="bi bi-gear-wide-connected" aria-hidden="true"></i> Setup
+                  </button>
+                </div>
+
+                <div className="mt-4 border-t border-white/10 pt-6">
+                  <label className="block text-sm font-bold text-gray-400 mb-2 uppercase tracking-widest">Or Analyze Recorded Video</label>
+                  <p className="text-xs text-gray-500 mb-4">Upload a video (max 2-3 minutes) of exercises like push-ups, planks, or others for offline analysis.</p>
+                  <div className="flex gap-4 items-center flex-wrap sm:flex-nowrap">
+                    <input 
+                      type="file" 
+                      accept="video/*" 
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          setVideoFile(e.target.files[0]);
+                        }
+                      }}
+                      className="flex-1 bg-white/5 border border-white/10 text-white p-3 rounded-xl file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-bold file:tracking-widest file:bg-blue-500/20 file:text-blue-400 hover:file:bg-blue-500/30 transition-all cursor-pointer text-sm"
+                    />
+                    <button
+                      onClick={async () => {
+                        if (!videoFile) return;
+                        setIsProcessingVideo(true);
+                        try {
+                          const summary = await analyzeVideoFile(videoFile, selectedExercise);
+                          setWorkoutSummary(summary);
+                        } catch (err) {
+                          console.error(err);
+                          alert('Failed to process video: ' + err);
+                        } finally {
+                          setIsProcessingVideo(false);
+                        }
+                      }}
+                      disabled={!videoFile || isProcessingVideo}
+                      className="glass-card px-8 py-3 h-[50px] border-blue-500/30 hover:border-blue-500/60 text-blue-400 font-bold uppercase tracking-widest transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 w-full sm:w-auto justify-center"
+                    >
+                      {isProcessingVideo ? (
+                        <><i className="bi bi-hourglass-split animate-spin"></i> Processing...</>
+                      ) : (
+                        <><i className="bi bi-cpu"></i> Analyze</>
+                      )}
+                    </button>
+                  </div>
+                </div>
               </>
             ) : (
               <button
                 onClick={endSession}
-                className="w-full py-4 bg-red-500/20 text-red-500 hover:bg-red-500/30 border border-red-500/30 rounded-xl font-black tracking-widest uppercase transition-all flex items-center justify-center gap-3"
+                disabled={isSaving}
+                className="w-full py-4 bg-red-500/20 text-red-500 hover:bg-red-500/30 border border-red-500/30 rounded-xl font-black tracking-widest uppercase transition-all flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
                 aria-label="Terminate current workout session"
               >
-                <i className="bi bi-stop-circle-fill" aria-hidden="true"></i> TERMINATE SESSION
+                <i className="bi bi-stop-circle-fill" aria-hidden="true"></i> {isSaving ? 'SAVING...' : 'TERMINATE SESSION'}
               </button>
             )}
           </div>
@@ -541,22 +594,38 @@ export function WorkoutSession({
               
               <div className="space-y-3 h-[200px] overflow-y-auto pr-2 custom-scrollbar">
                 {feedback.recentMistakes.length > 0 ? (
-                  feedback.recentMistakes.map((mistake, index) => (
-                    <div
-                      key={index}
-                      className="bg-orange-500/10 p-4 rounded-2xl border border-orange-500/20 animate-in slide-in-from-right duration-500"
-                    >
-                      <div className="flex justify-between items-start mb-1">
-                        <span className="text-[10px] font-black text-orange-400 uppercase tracking-widest flex items-center gap-1">
-                          <i className="bi bi-exclamation-circle"></i> {mistake.type.replace(/_/g, ' ')}
-                        </span>
-                        <span className="text-[8px] text-orange-500/60 font-mono">SEV: {(mistake.severity * 100).toFixed(0)}</span>
+                  feedback.recentMistakes.map((mistake, index) => {
+                    const isStatus = mistake.type === 'status' || mistake.type === 'EXERCISE_MISMATCH';
+                    const isMismatch = mistake.type === 'EXERCISE_MISMATCH';
+                    
+                    return (
+                      <div
+                        key={index}
+                        className={`p-4 rounded-2xl border animate-in slide-in-from-right duration-500 ${
+                          isMismatch 
+                            ? 'bg-red-500/10 border-red-500/20' 
+                            : isStatus 
+                              ? 'bg-green-500/10 border-green-500/20' 
+                              : 'bg-orange-500/10 border-orange-500/20'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start mb-1">
+                          <span className={`text-[10px] font-black uppercase tracking-widest flex items-center gap-1 ${
+                            isMismatch ? 'text-red-400' : isStatus ? 'text-green-400' : 'text-orange-400'
+                          }`}>
+                            <i className={`bi ${isMismatch ? 'bi-exclamation-triangle' : isStatus ? 'bi-info-circle' : 'bi-exclamation-circle'}`}></i> 
+                            {mistake.type.replace(/_/g, ' ')}
+                          </span>
+                          {!isStatus && (
+                            <span className="text-[8px] text-orange-500/60 font-mono">SEV: {(mistake.severity * 100).toFixed(0)}</span>
+                          )}
+                        </div>
+                        <p className={`text-sm font-bold leading-tight ${isMismatch ? 'text-red-200' : isStatus ? 'text-green-200' : 'text-gray-300'}`}>
+                          {mistake.suggestion}
+                        </p>
                       </div>
-                      <p className="text-sm text-gray-300 font-bold leading-tight">
-                        {mistake.suggestion}
-                      </p>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="h-full flex flex-col items-center justify-center text-center opacity-30 grayscale hover:opacity-50 transition-all cursor-default">
                     <i className="bi bi-shield-check text-4xl mb-2"></i>

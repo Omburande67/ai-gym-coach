@@ -316,6 +316,93 @@ class LLMService:
         else:
             return f"I'm here to help with your {goals} journey! What would you like to know about workouts, nutrition, or motivation?"
     
+    async def generate_workout_summary(self, summary_data: Dict) -> Dict:
+        """
+        Generate a detailed, descriptive workout summary using Gemini.
+        """
+        exercises = summary_data.get('exercises', [])
+        total_reps = summary_data.get('total_reps', 0)
+        avg_form = summary_data.get('average_form_score', 0)
+        top_mistakes = summary_data.get('top_mistakes', [])
+        duration = summary_data.get('total_duration_seconds', 0)
+        mins = duration // 60
+        secs = duration % 60
+
+        # Build rich per-exercise detail string for the prompt
+        ex_details = []
+        for ex in exercises:
+            ex_type = ex if isinstance(ex, str) else getattr(ex, 'exercise_type', str(ex))
+            reps = getattr(ex, 'reps_completed', 0) if hasattr(ex, 'reps_completed') else ex.get('reps_completed', 0) if isinstance(ex, dict) else 0
+            form = getattr(ex, 'form_score', None) if hasattr(ex, 'form_score') else ex.get('form_score') if isinstance(ex, dict) else None
+            ex_details.append(f"- {ex_type}: {reps} reps, form score {form:.0f}%" if form is not None else f"- {ex_type}: {reps} reps")
+
+        mistakes_detail = []
+        for m in top_mistakes:
+            mistakes_detail.append(f"- {m.get('type','?')} (occurred {m.get('count',0)}x): {m.get('suggestion','')}")
+
+        if not self.api_key_set:
+            return self._get_mock_summary(exercises, total_reps, avg_form, top_mistakes)
+
+        prompt = f"""You are an expert AI Gym Coach analyzing a real recorded workout session.
+
+SESSION FACTS (these are real measurements — do NOT invent numbers):
+- Duration: {mins}m {secs}s
+- Total reps completed: {total_reps}
+- Average form score: {avg_form:.1f}%
+
+EXERCISES DETECTED AND PERFORMED:
+{chr(10).join(ex_details) if ex_details else '- No exercises detected (poor video quality or body not visible)'}
+
+FORM MISTAKES IDENTIFIED:
+{chr(10).join(mistakes_detail) if mistakes_detail else '- No significant form mistakes detected'}
+
+Write a coaching report with EXACTLY these 5 keys in a JSON object:
+1. "detailed_analysis": 3-4 sentences. Mention the ACTUAL exercise(s) performed, the actual rep count, the actual form score, and the actual duration. Be specific. Do NOT be generic.
+2. "strengths": 1-2 sentences on what the athlete did well (based on form score and rep completion).
+3. "improvements": 2-3 bullet points of specific technical corrections based on the mistakes above. If no mistakes, give general pro tips for that exercise.
+4. "consistency_rating": One of: "Elite", "Very Consistent", "Consistent", "Needs Focus", "Inconsistent" — based on reps and form score.
+5. "ai_coach_tip": One highly specific, actionable pro tip for the NEXT session of this exercise.
+
+Return ONLY valid JSON. No markdown fences. No extra text."""
+
+        try:
+            response = self.model.generate_content(
+                prompt,
+                generation_config={"temperature": 0.4, "max_output_tokens": 600}
+            )
+            if response and response.text:
+                content = response.text.strip()
+                if content.startswith("```"):
+                    content = content.split("```")[-2] if "```" in content else content
+                    content = content.replace("json", "", 1).strip()
+                return json.loads(content)
+        except Exception as e:
+            logger.error(f"Error generating AI summary: {e}")
+
+        return self._get_mock_summary(exercises, total_reps, avg_form, top_mistakes)
+
+    def _get_mock_summary(self, exercises, total_reps: int, avg_form: float, top_mistakes: list) -> Dict:
+        """Dynamic fallback summary based on actual session data."""
+        ex_names = []
+        for ex in exercises:
+            name = ex if isinstance(ex, str) else getattr(ex, 'exercise_type', str(ex))
+            ex_names.append(name.replace('_', ' ').title())
+
+        ex_str = ', '.join(ex_names) if ex_names else 'unknown exercise'
+        form_label = "excellent" if avg_form >= 85 else "good" if avg_form >= 70 else "needs improvement"
+        rating = "Very Consistent" if total_reps >= 15 else "Consistent" if total_reps >= 8 else "Needs Focus"
+
+        mistake_tips = [m.get('suggestion', '') for m in top_mistakes[:3] if m.get('suggestion')]
+        improvements = '. '.join(mistake_tips) if mistake_tips else f"Keep practicing {ex_str} with attention to full range of motion and controlled breathing."
+
+        return {
+            "detailed_analysis": f"You performed {ex_str} for a total of {total_reps} reps with a form score of {avg_form:.0f}%. Your technique was {form_label} throughout the session. {'Great effort maintaining consistency!' if total_reps >= 10 else 'Focus on increasing volume in your next session.'}",
+            "strengths": f"You completed {total_reps} reps of {ex_str}. {'Your form score of ' + str(round(avg_form)) + '% shows solid body control.' if avg_form >= 70 else 'You pushed through the full session despite challenges.'}",
+            "improvements": improvements,
+            "consistency_rating": rating,
+            "ai_coach_tip": f"For {ex_str}: focus on a 2-second controlled descent on each rep to maximize muscle engagement and reduce injury risk."
+        }
+
     def _build_coach_prompt(self, user_profile: Dict, user_context: Dict) -> str:
         """Build the system prompt for the AI coach."""
         goals = user_profile.get("fitness_goals", "general fitness")

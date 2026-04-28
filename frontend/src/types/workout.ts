@@ -41,6 +41,10 @@ export interface WorkoutSession {
 }
 
 export interface WorkoutSummaryData {
+  total_workouts: number;
+  current_streak: number;
+  longest_streak: number;
+  exercise_breakdown: {};
   session_id: string;
   total_reps: number;
   total_duration_seconds: number;
@@ -48,6 +52,10 @@ export interface WorkoutSummaryData {
   top_mistakes: FormMistake[];
   recommendations: string[];
   exercises: ExerciseRecord[];
+  detailed_analysis?: string;
+  strengths?: string;
+  improvements?: string;
+  consistency_rating?: string;
 }
 export interface PlanExercise {
   name: string;

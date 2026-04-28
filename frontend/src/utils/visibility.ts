@@ -27,7 +27,7 @@ export interface VisibilityStatus {
 export function checkFullBodyVisibility(
   poseData: PoseData | null,
   visibilityThreshold: number = 0.5,
-  maxLowVisibilityPercentage: number = 0.2
+  maxLowVisibilityPercentage: number = 0.8
 ): VisibilityStatus {
   if (!poseData || !poseData.keypoints || poseData.keypoints.length === 0) {
     return {

@@ -37,6 +37,26 @@ class User(Base):
         return f"<User(user_id={self.user_id}, email={self.email})>"
 
 
+class UserProfileHistory(Base):
+    """Tracks historical changes to user profile (weight, height, goals)"""
+    __tablename__ = "user_profile_history"
+
+    history_id: Mapped[uuid.UUID] = mapped_column(
+        primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.user_id", ondelete="CASCADE"), nullable=False
+    )
+    weight_kg: Mapped[Optional[float]] = mapped_column(DECIMAL(5, 2), nullable=True)
+    height_cm: Mapped[Optional[float]] = mapped_column(DECIMAL(5, 2), nullable=True)
+    body_type: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    fitness_goals: Mapped[Optional[List[str]]] = mapped_column(JSON, nullable=True)
+    
+    recorded_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP, nullable=False, server_default=func.now()
+    )
+
+
 class NotificationPreferences(Base):
     """Model for user notification preferences"""
     __tablename__ = "notification_preferences"

@@ -22,6 +22,7 @@ class MessageType(str, Enum):
     POSE_DATA = "pose_data"
     PING = "ping"
     SESSION_END = "session_end"
+    SET_EXERCISE = "set_exercise"
     
     # Server -> Client messages
     EXERCISE_DETECTED = "exercise_detected"
@@ -100,6 +101,22 @@ class SessionEndMessage(BaseModel):
         ...,
         description="Unix timestamp in milliseconds",
         gt=0
+    )
+
+
+class SetExerciseMessage(BaseModel):
+    """
+    Message to explicitly set the exercise to track.
+    
+    Sent by frontend when a specific exercise is selected for the session.
+    """
+    type: Literal[MessageType.SET_EXERCISE] = Field(
+        default=MessageType.SET_EXERCISE,
+        description="Message type identifier"
+    )
+    exercise: str = Field(
+        ...,
+        description="Exercise type to track"
     )
 
 
@@ -235,7 +252,7 @@ class ErrorMessage(BaseModel):
 
 
 # Union type for all client messages
-ClientMessage = Union[PoseDataMessage, PingMessage, SessionEndMessage]
+ClientMessage = Union[PoseDataMessage, PingMessage, SessionEndMessage, SetExerciseMessage]
 
 # Union type for all server messages
 ServerMessage = Union[
@@ -269,5 +286,7 @@ def parse_client_message(data: dict) -> ClientMessage:
         return PingMessage(**data)
     elif message_type == MessageType.SESSION_END:
         return SessionEndMessage(**data)
+    elif message_type == MessageType.SET_EXERCISE:
+        return SetExerciseMessage(**data)
     else:
         raise ValueError(f"Unknown message type: {message_type}")
